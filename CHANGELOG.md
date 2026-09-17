@@ -1,3 +1,8 @@
+## Unreleased
+
+- `AssetEntityVideoFrames.extract`: JPEG stills at a list of times, read in
+  place — `AVAssetImageGenerator` on iOS, `MediaMetadataRetriever` on Android.
+
 ## 0.1.0
 
 - `AssetEntityVideoController`, `AssetEntityVideoValue`, `AssetEntityVideoView`:

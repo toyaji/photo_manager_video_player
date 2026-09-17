@@ -44,6 +44,22 @@ public class PhotoManagerVideoPlayerPlugin: NSObject, FlutterPlugin {
             return result(nil)
         }
 
+        if call.method == "extractFrames" {
+            guard let assetId = args["assetId"] as? String else {
+                return result(FlutterError(
+                    code: "assetNotFound", message: "Missing 'assetId'.", details: nil))
+            }
+            VideoFrameExtractor.extract(
+                localIdentifier: assetId,
+                timesMs: (args["timesMs"] as? [NSNumber])?.map { $0.int64Value } ?? [],
+                maxEdge: (args["maxEdge"] as? NSNumber)?.intValue ?? 480,
+                quality: (args["quality"] as? NSNumber)?.intValue ?? 70,
+                allowNetworkAccess: args["allowNetworkAccess"] as? Bool ?? false,
+                result: result
+            )
+            return
+        }
+
         if call.method == "create" {
             guard let assetId = args["assetId"] as? String else {
                 return result(FlutterError(

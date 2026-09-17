@@ -6,5 +6,6 @@
 library;
 
 export 'src/controller.dart' hide applyPlayerEvent;
+export 'src/frames.dart';
 export 'src/value.dart';
 export 'src/view.dart';

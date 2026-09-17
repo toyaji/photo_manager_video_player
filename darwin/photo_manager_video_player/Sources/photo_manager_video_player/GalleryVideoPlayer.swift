@@ -342,9 +342,9 @@ extension GalleryVideoPlayer: FlutterStreamHandler {
     }
 }
 
-/// (code, message) for a failed `requestPlayerItem`, matching
-/// `AssetEntityVideoErrorCode` on the Dart side.
-private func mapErrorCode(_ info: [AnyHashable: Any]?) -> String {
+/// (code, message) for a failed `requestPlayerItem` or `requestAVAsset`,
+/// matching `AssetEntityVideoErrorCode` on the Dart side.
+func mapErrorCode(_ info: [AnyHashable: Any]?) -> String {
     if (info?[PHImageResultIsInCloudKey] as? Bool) == true {
         return "iCloudUnavailable"
     }
@@ -355,14 +355,14 @@ private func mapErrorCode(_ info: [AnyHashable: Any]?) -> String {
     return "playbackFailed"
 }
 
-private func mapErrorMessage(_ info: [AnyHashable: Any]?) -> String {
+func mapErrorMessage(_ info: [AnyHashable: Any]?) -> String {
     if let error = info?[PHImageErrorKey] as? NSError {
         return error.localizedDescription
     }
     if (info?[PHImageResultIsInCloudKey] as? Bool) == true {
         return "This asset is only in iCloud and network access is disabled."
     }
-    return "PhotoKit could not produce a player item for this asset."
+    return "PhotoKit could not load this video."
 }
 
 /// How close to the item's duration still counts as "at the end".

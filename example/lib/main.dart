@@ -167,12 +167,57 @@ class _VideoPageState extends State<VideoPage> {
     super.dispose();
   }
 
+  /// Four stills spread across the clip, read without copying the video.
+  Future<void> _showFrames() async {
+    final int durationMs = widget.asset.videoDuration.inMilliseconds;
+    final Future<List<Uint8List?>> frames = AssetEntityVideoFrames.extract(
+      assetId: widget.asset.id,
+      timesMs: <int>[for (int i = 0; i < 4; i++) durationMs * i ~/ 4],
+      allowNetworkAccess: true,
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (BuildContext context) => FutureBuilder<List<Uint8List?>>(
+        future: frames,
+        builder: (BuildContext context, AsyncSnapshot<List<Uint8List?>> snap) {
+          if (snap.hasError) {
+            return Center(child: Text('${snap.error}'));
+          }
+          if (!snap.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return GridView.count(
+            crossAxisCount: 2,
+            padding: const EdgeInsets.all(8),
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            children: <Widget>[
+              for (final Uint8List? jpeg in snap.data!)
+                jpeg == null
+                    ? const ColoredBox(color: Colors.black12)
+                    : Image.memory(jpeg, fit: BoxFit.cover),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar:
-          AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white),
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        actions: <Widget>[
+          IconButton(
+            tooltip: 'Frames',
+            icon: const Icon(Icons.photo_library_outlined),
+            onPressed: _showFrames,
+          ),
+        ],
+      ),
       body: Center(
         child: ValueListenableBuilder<AssetEntityVideoValue>(
           valueListenable: _controller,

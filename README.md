@@ -130,6 +130,36 @@ up the decoder of a neighbouring asset before the user swipes to it.
 | Hot restart | Package | The engine survives a hot restart but the Dart side does not, so the first `create` after a restart asks the platform to drop every player from the previous isolate. |
 | Event delivery | Package | One `EventChannel` per player; malformed events are ignored rather than thrown. |
 
+## Frames without a copy
+
+`AssetEntityVideoFrames.extract` returns JPEG stills for a list of times — for
+thumbnail strips, or to hand a few frames to an image model — through the
+same zero-copy resolution as playback.
+
+```dart
+final List<Uint8List?> frames = await AssetEntityVideoFrames.extract(
+  assetId: asset.id,
+  timesMs: <int>[0, 2000, 4000],
+  maxEdge: 480,   // longer edge, in pixels
+  quality: 70,    // JPEG quality, 0–100
+);
+```
+
+| | Android | iOS |
+|---|---|---|
+| Resolve | `MediaStore.Video.Media` `content://` URI | `PHImageManager.requestAVAsset` |
+| Decode | `MediaMetadataRetriever.getScaledFrameAtTime` (`getFrameAtTime` + scale below API 27) | `AVAssetImageGenerator`, preferred track transform applied |
+| Bytes copied | **0** | **0** |
+
+- The asset is opened once per call, whatever the number of times.
+- The result has one entry per time, in order; a frame that fails is `null`.
+- Frames snap to the nearest sync frame: fast, but not frame-exact.
+- `allowNetworkAccess` defaults to **false** here. An iCloud-only video then
+  throws a `PlatformException` with code `iCloudUnavailable` instead of
+  downloading. Android ignores the flag.
+- Only a failure to open the asset throws; its code is one of the names in
+  [Errors](#errors).
+
 ## Errors
 
 | Code | Meaning |

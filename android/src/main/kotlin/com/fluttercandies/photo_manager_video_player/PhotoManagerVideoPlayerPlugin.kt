@@ -15,17 +15,21 @@ class PhotoManagerVideoPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHan
     private lateinit var textures: TextureRegistry
 
     private val players = mutableMapOf<Long, GalleryVideoPlayer>()
+    private var frameExtractor: VideoFrameExtractor? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         messenger = binding.binaryMessenger
         textures = binding.textureRegistry
+        frameExtractor = VideoFrameExtractor(context)
         channel = MethodChannel(messenger, CHANNEL_NAME)
         channel.setMethodCallHandler(this)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         releaseAll()
+        frameExtractor?.dispose()
+        frameExtractor = null
         channel.setMethodCallHandler(null)
     }
 
@@ -40,6 +44,22 @@ class PhotoManagerVideoPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHan
         if (call.method == "disposeAll") {
             releaseAll()
             return result.success(null)
+        }
+
+        if (call.method == "extractFrames") {
+            val assetId = call.argument<String>("assetId")
+                ?: return result.error("assetNotFound", "Missing 'assetId'.", null)
+            val extractor = frameExtractor
+                ?: return result.error("playbackFailed", "Plugin is detached.", null)
+            // Android has no remote-only videos, so allowNetworkAccess is ignored.
+            extractor.extract(
+                assetId = assetId,
+                timesMs = call.argument<List<Number>>("timesMs")?.map { it.toLong() } ?: emptyList(),
+                maxEdge = call.argument<Number>("maxEdge")?.toInt() ?: 480,
+                quality = call.argument<Number>("quality")?.toInt() ?: 70,
+                result = result,
+            )
+            return
         }
 
         if (call.method == "create") {

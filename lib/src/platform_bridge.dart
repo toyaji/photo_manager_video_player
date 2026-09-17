@@ -62,6 +62,30 @@ class AssetEntityVideoPlatform {
   static Future<void> setLooping(int textureId, bool looping) =>
       _invoke('setLooping', textureId, <String, dynamic>{'looping': looping});
 
+  static Future<List<Uint8List?>> extractFrames({
+    required String assetId,
+    required List<int> timesMs,
+    required int maxEdge,
+    required int quality,
+    required bool allowNetworkAccess,
+  }) async {
+    final List<Object?>? frames = await _channel
+        .invokeListMethod<Object?>('extractFrames', <String, dynamic>{
+      'assetId': assetId,
+      'timesMs': timesMs,
+      'maxEdge': maxEdge,
+      'quality': quality,
+      'allowNetworkAccess': allowNetworkAccess,
+    });
+    // Positions are the contract: a short or malformed reply degrades to
+    // nulls rather than shifting frames onto the wrong times.
+    return List<Uint8List?>.generate(timesMs.length, (int i) {
+      final Object? frame =
+          frames != null && i < frames.length ? frames[i] : null;
+      return frame is Uint8List ? frame : null;
+    });
+  }
+
   static Future<void> _invoke(
     String method,
     int textureId, [
