@@ -51,7 +51,10 @@ class GalleryVideoPlayer(
                 mapOf(
                     "width" to videoSize.width,
                     "height" to videoSize.height,
-                    "rotationDegrees" to (exoPlayer.videoFormat?.rotationDegrees ?: 0),
+                    "rotationDegrees" to rotationForDart(
+                        exoPlayer.videoFormat?.rotationDegrees ?: 0,
+                        surface.handlesCropAndRotation(),
+                    ),
                 ),
             )
         }
@@ -210,3 +213,10 @@ private fun mapPlaybackError(error: PlaybackException): Pair<String, String> {
         else -> "playbackFailed" to (error.message ?: "Playback failed.")
     }
 }
+
+/**
+ * Rotation the Dart view still has to apply. The SurfaceTexture backend already
+ * rotates frames by the stream metadata; the ImageReader backend (API 29+) does not.
+ */
+internal fun rotationForDart(formatRotationDegrees: Int, surfaceHandlesRotation: Boolean): Int =
+    if (surfaceHandlesRotation) 0 else formatRotationDegrees

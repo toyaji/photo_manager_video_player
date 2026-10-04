@@ -73,12 +73,14 @@ android {
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
+        test.java.srcDirs += 'src/test/kotlin'
     }
 }
 
 dependencies {
     // ExoPlayer plays the MediaStore content:// URI directly — no extra framework.
     implementation 'androidx.media3:media3-exoplayer:1.4.1'
+    testImplementation 'junit:junit:4.13.2'
 }
 
 if (useBuiltInKotlin) {

@@ -27,7 +27,7 @@ AspectRatio(
 
 ## How it differs from `video_player`
 
-![Playback path](docs/images/playback-path.svg)
+![Playback path](doc/images/playback-path.svg)
 
 `video_player` plays files and URLs. To play a gallery asset with it, an app
 first calls `entity.file`, which on Android copies the whole original into the
@@ -55,7 +55,7 @@ package for anything that comes from the photo library.
 
 ## How frames reach the screen
 
-![Frame delivery](docs/images/frame-delivery.svg)
+![Frame delivery](doc/images/frame-delivery.svg)
 
 **Android.** The asset id is a MediaStore `_ID`; it becomes
 `content://media/external/video/media/<id>` and is given to ExoPlayer as a
@@ -79,7 +79,7 @@ re-encoding anything.
 
 ## Controller lifecycle
 
-![Controller lifecycle](docs/images/controller-lifecycle.svg)
+![Controller lifecycle](doc/images/controller-lifecycle.svg)
 
 `AssetEntityVideoController` is a `ValueNotifier<AssetEntityVideoValue>`.
 

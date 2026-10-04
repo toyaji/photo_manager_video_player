@@ -8,6 +8,9 @@ public class PhotoManagerVideoPlayerPlugin: NSObject, FlutterPlugin {
     private let messenger: FlutterBinaryMessenger
     private var players: [Int64: GalleryVideoPlayer] = [:]
 
+    /// Players the engine still owns; read by the engine-teardown test.
+    var playerCount: Int { players.count }
+
     init(registry: FlutterTextureRegistry, messenger: FlutterBinaryMessenger) {
         self.registry = registry
         self.messenger = messenger
@@ -21,6 +24,8 @@ public class PhotoManagerVideoPlayerPlugin: NSObject, FlutterPlugin {
         let channel = FlutterMethodChannel(
             name: channelName, binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(instance, channel: channel)
+        // Only published instances receive detachFromEngine(for:).
+        registrar.publish(instance)
     }
 
     /// Releases every outstanding player when the engine tears down, so no
