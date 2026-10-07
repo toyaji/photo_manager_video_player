@@ -61,6 +61,44 @@ jobs:
         working-directory: ${{ env.PACKAGE_DIR }}/example/android
         run: ./gradlew :photo_manager_video_player:testDebugUnitTest --console=plain
 
+  instrumented:
+    name: Android device tests (API ${{ matrix.api-level }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [28, 34]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: "stable"
+          cache: true
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Generate Gradle project
+        working-directory: ${{ env.PACKAGE_DIR }}/example
+        run: flutter build apk --config-only
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          working-directory: ${{ env.PACKAGE_DIR }}/example
+          script: |
+            cd android && ./gradlew :app:connectedDebugAndroidTest --console=plain
+            ./tool/integration_test_android.sh
+
   ios:
     name: iOS build (CocoaPods + SwiftPM) + XCTest
     runs-on: macos-latest

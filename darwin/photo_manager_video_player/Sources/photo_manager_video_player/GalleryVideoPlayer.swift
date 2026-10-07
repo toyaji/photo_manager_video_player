@@ -132,6 +132,8 @@ class GalleryVideoPlayer: NSObject {
         }
 
         let player = AVPlayer(playerItem: playerItem)
+        // Keeping the rate at the end lets a loop rewind without a pause in between.
+        player.actionAtItemEnd = isLooping ? .none : .pause
         player.volume = Float(pendingVolume ?? initialVolume).clamped(to: 0...1)
         pendingVolume = nil
         avPlayer = player
@@ -217,6 +219,9 @@ class GalleryVideoPlayer: NSObject {
             initializedEventSent = true
             emit(event: "initialized", extra: ["durationMs": durationMs])
         case .failed:
+            // No frame will ever arrive, so the link would otherwise fire every vsync.
+            displayLink?.invalidate()
+            displayLink = nil
             emitError(
                 code: "playbackFailed",
                 message: item.error?.localizedDescription ?? "Playback failed.")
@@ -227,7 +232,7 @@ class GalleryVideoPlayer: NSObject {
 
     private func handlePlaybackEnded() {
         if isLooping {
-            restart()
+            avPlayer?.seek(to: .zero)
         } else {
             emit(event: "completed")
         }
@@ -260,7 +265,8 @@ class GalleryVideoPlayer: NSObject {
     }
 
     func seek(toMilliseconds ms: Int64) {
-        avPlayer?.seek(to: CMTime(value: ms, timescale: 1000))
+        avPlayer?.seek(
+            to: CMTime(value: ms, timescale: 1000), toleranceBefore: .zero, toleranceAfter: .zero)
         // Resume frame pushes so a paused seek still repaints, and report the
         // position the periodic observer would skip while paused.
         displayLink?.isPaused = false
@@ -277,6 +283,7 @@ class GalleryVideoPlayer: NSObject {
 
     func setLooping(_ looping: Bool) {
         isLooping = looping
+        avPlayer?.actionAtItemEnd = looping ? .none : .pause
     }
 
     func release() {

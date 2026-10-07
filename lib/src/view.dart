@@ -29,7 +29,7 @@ class AssetEntityVideoView extends StatelessWidget {
           return const SizedBox.expand();
         }
         return RotatedBox(
-          quarterTurns: value.rotationDegrees ~/ 90,
+          quarterTurns: value.rotationCorrection ~/ 90,
           child: Texture(textureId: textureId),
         );
       },

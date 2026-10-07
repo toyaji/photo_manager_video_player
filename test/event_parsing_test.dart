@@ -90,6 +90,6 @@ void main() {
     });
 
     expect(next.size, const Size(720, 1280));
-    expect(next.rotationDegrees, 90);
+    expect(next.rotationCorrection, 90);
   });
 }

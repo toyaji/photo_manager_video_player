@@ -54,6 +54,7 @@ public class PhotoManagerVideoPlayerPlugin: NSObject, FlutterPlugin {
                 return result(FlutterError(
                     code: "playbackFailed", message: "Missing 'assetId'.", details: nil))
             }
+            AudioSession.upgradeForPlaybackOnce()
             let player = GalleryVideoPlayer(
                 registry: registry,
                 messenger: messenger,
@@ -69,7 +70,7 @@ public class PhotoManagerVideoPlayerPlugin: NSObject, FlutterPlugin {
         guard let textureId = (args["textureId"] as? NSNumber)?.int64Value,
               let player = players[textureId] else {
             return result(FlutterError(
-                code: "assetNotFound", message: "No player for the given texture.", details: nil))
+                code: "playbackFailed", message: "No player for the given texture.", details: nil))
         }
 
         switch call.method {

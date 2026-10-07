@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_video_player/photo_manager_video_player.dart';
@@ -74,18 +75,18 @@ void main() {
     controller.dispose();
   });
 
-  test('a non-video asset fails with notAVideo instead of throwing', () async {
-    final AssetEntityVideoController controller = AssetEntityVideoController(
-      AssetEntity(
-        id: '2',
-        typeInt: AssetType.image.index,
-        width: 100,
-        height: 100,
+  test('a non-video asset is rejected when the controller is built', () {
+    expect(
+      () => AssetEntityVideoController(
+        AssetEntity(
+          id: '2',
+          typeInt: AssetType.image.index,
+          width: 100,
+          height: 100,
+        ),
       ),
+      throwsArgumentError,
     );
-    await controller.initialize();
-    expect(controller.value.error?.code, AssetEntityVideoErrorCode.notAVideo);
-    controller.dispose();
   });
 
   test('initialize() notifies listeners so the view can mount', () async {
@@ -161,16 +162,116 @@ void main() {
     await controller.setLooping(true);
   });
 
-  test('prepare() warms the player up without its own platform call', () async {
+  test('setters before initialize only update value, without a player',
+      () async {
     final List<MethodCall> calls = _mockPlatform(3);
-    final AssetEntityVideoController controller = AssetEntityVideoController(
-      _video('1'),
+    final AssetEntityVideoController controller =
+        AssetEntityVideoController(_video('1'));
+
+    await controller.setVolume(0);
+    await controller.setLooping(true);
+    await controller.pause();
+    await controller.seekTo(const Duration(seconds: 1));
+
+    expect(calls, isEmpty);
+    expect(controller.value.volume, 0);
+    expect(controller.value.isLooping, isTrue);
+
+    await controller.initialize();
+    final MethodCall create =
+        calls.firstWhere((MethodCall c) => c.method == 'create');
+    expect(create.arguments['volume'], 0.0);
+    expect(create.arguments['looping'], isTrue);
+    await controller.dispose();
+  });
+
+  test('a setter during create is applied once the player exists', () async {
+    final Completer<int> created = Completer<int>();
+    final List<MethodCall> calls = _mockPlatform(
+      4,
+      onCall: (MethodCall call) =>
+          call.method == 'create' ? created.future : null,
     );
+    final AssetEntityVideoController controller =
+        AssetEntityVideoController(_video('1'));
 
-    await controller.prepare();
+    final Future<void> init = controller.initialize();
+    await Future<void>.delayed(Duration.zero);
+    await controller.setVolume(0.25);
+    created.complete(4);
+    await init;
 
-    expect(calls.map((MethodCall c) => c.method), isNot(contains('prepare')));
-    expect(calls.map((MethodCall c) => c.method), contains('create'));
-    controller.dispose();
+    expect(
+      calls.where((MethodCall c) => c.method == 'setVolume').single.arguments,
+      containsPair('volume', 0.25),
+    );
+    await controller.dispose();
+  });
+
+  test('pause() before initialization cancels a pending play()', () async {
+    final List<MethodCall> calls = _mockPlatform(5);
+    final AssetEntityVideoController controller =
+        AssetEntityVideoController(_video('1'));
+
+    final Future<void> playing = controller.play();
+    await controller.pause();
+    await playing;
+
+    expect(calls.map((MethodCall c) => c.method), isNot(contains('play')));
+    await controller.dispose();
+  });
+
+  test('seekTo clamps to the duration', () async {
+    final List<MethodCall> calls = _mockPlatform(6);
+    final AssetEntityVideoController controller =
+        AssetEntityVideoController(_video('1'));
+    await controller.initialize();
+
+    await controller.seekTo(const Duration(seconds: 99));
+    await controller.seekTo(const Duration(seconds: -1));
+
+    expect(
+      calls
+          .where((MethodCall c) => c.method == 'seekTo')
+          .map((MethodCall c) => c.arguments['positionMs']),
+      <int>[12400, 0],
+    );
+    await controller.dispose();
+  });
+
+  test('pauses in the background and resumes on return', () async {
+    final List<MethodCall> calls = _mockPlatform(7);
+    final AssetEntityVideoController controller =
+        AssetEntityVideoController(_video('1'));
+    await controller.initialize();
+    controller.value = controller.value.copyWith(isPlaying: true);
+    final TestWidgetsFlutterBinding binding =
+        TestWidgetsFlutterBinding.instance;
+
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await Future<void>.delayed(Duration.zero);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      calls
+          .map((MethodCall c) => c.method)
+          .where((String m) => m == 'pause' || m == 'play'),
+      <String>['pause', 'play'],
+    );
+    await controller.dispose();
+  });
+
+  test('seeking back from the end clears isCompleted', () async {
+    _mockPlatform(8);
+    final AssetEntityVideoController controller =
+        AssetEntityVideoController(_video('1'));
+    await controller.initialize();
+    controller.value = controller.value.copyWith(isCompleted: true);
+
+    await controller.seekTo(const Duration(seconds: 1));
+
+    expect(controller.value.isCompleted, isFalse);
+    await controller.dispose();
   });
 }

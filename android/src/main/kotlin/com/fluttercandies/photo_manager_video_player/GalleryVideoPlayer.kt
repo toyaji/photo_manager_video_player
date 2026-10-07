@@ -12,6 +12,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.view.TextureRegistry
@@ -80,23 +83,26 @@ class GalleryVideoPlayer(
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            val (code, message) = mapPlaybackError(error)
+            val (code, message) = mapPlaybackError(error.errorCode, error)
             emitError(code, message)
         }
     }
 
-    private val exoPlayer: ExoPlayer = ExoPlayer.Builder(context).build().apply {
-        // Requests audio focus, so starting a gallery video pauses whatever
-        // else the user was listening to.
-        setAudioAttributes(
-            AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
-            true,
+    private val audioAttributes =
+        AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
+
+    private val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
+        .setMediaSourceFactory(
+            DefaultMediaSourceFactory(context).setLoadErrorHandlingPolicy(NoRetryForMissingAsset),
         )
-        volume = initialVolume.toFloat().coerceIn(0f, 1f)
-        repeatMode = if (initialLooping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-        addListener(playerListener)
-        setVideoSurface(surface.surface)
-    }
+        .build()
+        .apply {
+            volume = initialVolume.toFloat().coerceIn(0f, 1f)
+            applyAudioFocus()
+            repeatMode = if (initialLooping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+            addListener(playerListener)
+            setVideoSurface(surface.surface)
+        }
 
     init {
         // Android can reclaim the surface while the app is backgrounded; the
@@ -154,7 +160,14 @@ class GalleryVideoPlayer(
 
     fun setVolume(volume: Double) {
         exoPlayer.volume = volume.toFloat().coerceIn(0f, 1f)
+        exoPlayer.applyAudioFocus()
     }
+
+    /**
+     * Audible playback takes audio focus and pauses other audio; a muted
+     * player must not, or a silent preview would stop the user's music.
+     */
+    private fun ExoPlayer.applyAudioFocus() = setAudioAttributes(audioAttributes, volume > 0f)
 
     fun setLooping(looping: Boolean) {
         exoPlayer.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
@@ -205,12 +218,30 @@ class GalleryVideoPlayer(
     }
 }
 
-/** (code, message) for a [PlaybackException], matching `AssetEntityVideoErrorCode` on the Dart side. */
-private fun mapPlaybackError(error: PlaybackException): Pair<String, String> {
-    return when (error.cause) {
-        is SecurityException -> "permissionDenied" to "No access to this asset."
-        is FileNotFoundException -> "assetNotFound" to "Asset is no longer in the library."
+/**
+ * (code, message) for a [PlaybackException]'s code and exception, matching `AssetEntityVideoErrorCode`
+ * on the Dart side. media3 wraps the platform exception, so the whole cause
+ * chain and the error code are checked.
+ */
+internal fun mapPlaybackError(errorCode: Int, error: Throwable): Pair<String, String> {
+    val causes = generateSequence(error) { it.cause }
+    return when {
+        errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
+            causes.any { it is SecurityException } ->
+            "permissionDenied" to "No access to this asset."
+        errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
+            causes.any { it is FileNotFoundException } ->
+            "assetNotFound" to "Asset is no longer in the library."
         else -> "playbackFailed" to (error.message ?: "Playback failed.")
+    }
+}
+
+/** A missing or forbidden asset will not appear on retry, so it fails at once. */
+private object NoRetryForMissingAsset : DefaultLoadErrorHandlingPolicy() {
+    override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
+        val causes = generateSequence<Throwable>(loadErrorInfo.exception) { it.cause }
+        if (causes.any { it is FileNotFoundException || it is SecurityException }) return C.TIME_UNSET
+        return super.getRetryDelayMsFor(loadErrorInfo)
     }
 }
 

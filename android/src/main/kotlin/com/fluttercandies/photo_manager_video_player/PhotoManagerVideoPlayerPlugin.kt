@@ -16,6 +16,9 @@ class PhotoManagerVideoPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHan
 
     private val players = mutableMapOf<Long, GalleryVideoPlayer>()
 
+    /** Players the engine still owns; read by the engine-teardown test. */
+    val playerCount: Int get() = players.size
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         messenger = binding.binaryMessenger
@@ -59,7 +62,7 @@ class PhotoManagerVideoPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHan
 
         val textureId = call.argument<Number>("textureId")?.toLong()
         val player = players[textureId]
-            ?: return result.error("assetNotFound", "No player for the given texture.", null)
+            ?: return result.error("playbackFailed", "No player for the given texture.", null)
 
         when (call.method) {
             "play" -> player.play()
