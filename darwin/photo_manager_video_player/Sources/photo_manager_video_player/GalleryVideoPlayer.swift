@@ -78,7 +78,12 @@ class GalleryVideoPlayer: NSObject {
 
         guard let asset = PHAsset.fetchAssets(
             withLocalIdentifiers: [localIdentifier], options: nil).firstObject else {
-            emitError(code: "assetNotFound", message: "Asset \(localIdentifier) is not available.")
+            // Without library access PhotoKit finds nothing, which is not the asset's fault.
+            if libraryAccessDenied() {
+                emitError(code: "permissionDenied", message: "Photo library access is not granted.")
+            } else {
+                emitError(code: "assetNotFound", message: "Asset \(localIdentifier) is not available.")
+            }
             return
         }
 
@@ -347,6 +352,17 @@ extension GalleryVideoPlayer: FlutterStreamHandler {
         eventSink = nil
         return nil
     }
+}
+
+/// Whether the app has no photo library access at all (limited access counts as access).
+private func libraryAccessDenied() -> Bool {
+    let status: PHAuthorizationStatus
+    if #available(iOS 14, *) {
+        status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    } else {
+        status = PHPhotoLibrary.authorizationStatus()
+    }
+    return status == .denied || status == .restricted || status == .notDetermined
 }
 
 /// (code, message) for a failed `requestPlayerItem`, matching

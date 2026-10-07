@@ -132,6 +132,7 @@ to the constructor throws an `ArgumentError`.
 | Error UI | App | Switch on `value.error?.code`. |
 | Audio session and focus | Package, minimal | Android: an audible player takes audio focus, so other audio pauses; a muted player (volume 0) does not. iOS raises the default `.soloAmbient` session to `.playback` once, on the first player, so the silent switch does not mute video; any category the app set is kept. With that default, starting any player on iOS, muted or not, stops other apps' audio, as with `video_player`; an app whose muted previews must not do that sets `.ambient` or `.mixWithOthers` itself. Mixing with other audio, ducking and Now Playing are the app's. |
 | App lifecycle | Package | Playback pauses when the app goes to the background and resumes on return if it was playing. Background playback is not offered. |
+| Audio interruptions (calls, other apps) | App | The system pauses playback and `isPlaying` turns false; resuming afterwards is the app's decision. |
 | Asset resolution | Package | MediaStore URI on Android, `PHAsset` lookup on iOS. |
 | Player and texture lifetime | Package | One player per controller; both freed in `dispose()` and on engine detach. |
 | Hot restart | Package | The engine survives a hot restart but the Dart side does not, so the first `create` after a restart asks the platform to drop every player from the previous isolate. |
@@ -141,8 +142,8 @@ to the constructor throws an `ArgumentError`.
 
 | Code | Meaning |
 |---|---|
-| `assetNotFound` | The id no longer resolves to an asset |
-| `permissionDenied` | Photo library access is missing |
+| `assetNotFound` | The id no longer resolves to an asset, or the asset is outside a limited (selected-photos) grant |
+| `permissionDenied` | The app has no photo library access at all |
 | `iCloudUnavailable` | iOS: the asset is in iCloud and `allowNetworkAccess` is false, or the download failed |
 | `playbackFailed` | The platform player reported an error |
 

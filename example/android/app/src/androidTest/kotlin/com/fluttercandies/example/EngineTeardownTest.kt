@@ -20,8 +20,12 @@ class EngineTeardownTest {
 
     @Test
     fun engineTeardownReleasesPlayersWithoutDartDispose() {
+        lateinit var engine: FlutterEngine
+        instrumentation.runOnMainSync { engine = FlutterEngine(instrumentation.targetContext) }
+        // Players are created from Dart once the engine runs; by then the
+        // rendering backend that textures need has been chosen.
+        Thread.sleep(5000)
         instrumentation.runOnMainSync {
-            val engine = FlutterEngine(instrumentation.targetContext)
             val plugin = engine.plugins.get(PhotoManagerVideoPlayerPlugin::class.java)
                 as PhotoManagerVideoPlayerPlugin
             // An id that is never prepared still owns an ExoPlayer and a texture.
