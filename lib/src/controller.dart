@@ -8,6 +8,8 @@ import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter/widgets.dart'
+    show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 import 'package:photo_manager/photo_manager.dart';
 
 import 'platform_bridge.dart';
@@ -40,7 +42,7 @@ AssetEntityVideoValue applyPlayerEvent(
       }
       return current.copyWith(
         size: Size(width.toDouble(), height.toDouble()),
-        rotationDegrees: (event['rotationDegrees'] as num?)?.toInt() ?? 0,
+        rotationCorrection: (event['rotationDegrees'] as num?)?.toInt() ?? 0,
       );
     case 'firstFrame':
       return current.copyWith(firstFrameRendered: true);
@@ -84,32 +86,35 @@ String? _asString(Object? value) => value is String ? value : null;
 /// Android resolves the asset to a MediaStore `content://` URI and hands it to
 /// ExoPlayer; iOS asks PhotoKit for an `AVPlayerItem`. Neither path exports or
 /// copies a file.
+///
+/// Playback pauses when the app goes to the background and resumes when it
+/// returns, if it was playing.
 class AssetEntityVideoController extends ValueNotifier<AssetEntityVideoValue> {
   /// Builds a controller synchronously, seeding size and duration from the
   /// asset so the layout is correct before the first frame exists.
-  AssetEntityVideoController(
-    AssetEntity asset, {
-    this.allowNetworkAccess = true,
-    bool autoLoop = false,
-    double volume = 1.0,
-  })  : assetId = asset.id,
-        _assetIsVideo = asset.type == AssetType.video,
-        super(
+  ///
+  /// Throws an [ArgumentError] when [asset] is not a video.
+  AssetEntityVideoController(this.asset, {this.allowNetworkAccess = true})
+      : super(
           AssetEntityVideoValue(
             size: asset.orientatedSize,
             duration: asset.videoDuration,
-            isLooping: autoLoop,
-            volume: volume,
           ),
-        );
+        ) {
+    if (asset.type != AssetType.video) {
+      throw ArgumentError.value(asset.id, 'asset', 'Not a video');
+    }
+  }
 
-  /// MediaStore id on Android, `PHAsset.localIdentifier` on iOS.
-  final String assetId;
+  /// The video this controller plays.
+  final AssetEntity asset;
 
   /// Whether an iCloud-only asset may be downloaded on demand. iOS only.
+  ///
+  /// Pass `false` where downloading a full original is not wanted, such as
+  /// muted previews in a feed; the controller then fails with
+  /// [AssetEntityVideoErrorCode.iCloudUnavailable] instead.
   final bool allowNetworkAccess;
-
-  final bool _assetIsVideo;
 
   int? _textureId;
   StreamSubscription<dynamic>? _events;
@@ -117,33 +122,32 @@ class AssetEntityVideoController extends ValueNotifier<AssetEntityVideoValue> {
   final Completer<void> _ready = Completer<void>();
   bool _disposed = false;
 
-  /// Identifies the Flutter texture the video is drawn into.
-  @internal
+  /// Whether the app asked for playback; survives the wait for initialization.
+  bool _wantsPlaying = false;
+  _LifecycleObserver? _lifecycle;
+
+  /// The Flutter texture the video is drawn into, once [initialize] has
+  /// created the platform player. [AssetEntityVideoView] uses it; draw it
+  /// yourself with a `Texture` widget and [AssetEntityVideoValue.rotationCorrection].
   int? get textureId => _textureId;
 
   /// Creates the platform player and completes once it reports its metadata,
   /// so `value.duration` and `value.size` are exact when this returns.
   ///
-  /// Never throws: a failure lands in `value.error` so one broken asset cannot
-  /// stall a gallery swipe.
+  /// Never throws: a failure lands in `value.error`, so a gallery can warm up
+  /// neighbouring pages without awaiting. Check `value.hasError` afterwards.
   Future<void> initialize() => _initializing ??= _initialize();
 
   Future<void> _initialize() async {
-    if (!_assetIsVideo) {
-      _fail(
-        const AssetEntityVideoError(
-          AssetEntityVideoErrorCode.notAVideo,
-          'The asset is not a video.',
-        ),
-      );
-      return;
-    }
+    _lifecycle = _LifecycleObserver(this)..attach();
     try {
+      final bool looping = value.isLooping;
+      final double volume = value.volume;
       final int id = await AssetEntityVideoPlatform.create(
-        assetId: assetId,
+        assetId: asset.id,
         allowNetworkAccess: allowNetworkAccess,
-        looping: value.isLooping,
-        volume: value.volume,
+        looping: looping,
+        volume: volume,
       );
       if (_disposed) {
         unawaited(
@@ -166,6 +170,17 @@ class AssetEntityVideoController extends ValueNotifier<AssetEntityVideoValue> {
                 ),
         ),
       );
+      // Setters called while `create` was in flight only updated `value`.
+      if (value.isLooping != looping) {
+        await _call(
+          (int id) => AssetEntityVideoPlatform.setLooping(id, value.isLooping),
+        );
+      }
+      if (value.volume != volume) {
+        await _call(
+          (int id) => AssetEntityVideoPlatform.setVolume(id, value.volume),
+        );
+      }
       await _ready.future;
     } on PlatformException catch (e) {
       _fail(decodeError(e.code, e.message));
@@ -180,45 +195,64 @@ class AssetEntityVideoController extends ValueNotifier<AssetEntityVideoValue> {
   }
 
   /// Starts or resumes playback, initializing the player if needed.
-  Future<void> play() => _withPlayer(AssetEntityVideoPlatform.play);
+  Future<void> play() async {
+    if (_disposed) {
+      return;
+    }
+    _wantsPlaying = true;
+    await initialize();
+    if (_wantsPlaying) {
+      await _call(AssetEntityVideoPlatform.play);
+    }
+  }
 
-  /// Pauses playback, keeping the surface on the current frame.
-  Future<void> pause() => _withPlayer(AssetEntityVideoPlatform.pause);
+  /// Pauses playback, keeping the surface on the current frame. Before
+  /// initialization it only cancels a pending [play].
+  Future<void> pause() async {
+    _wantsPlaying = false;
+    await _call(AssetEntityVideoPlatform.pause);
+  }
 
-  /// Warms up the decoder without starting playback, so a neighbouring asset
-  /// is ready the moment the user swipes to it.
-  Future<void> prepare() => initialize();
+  /// Moves playback to [position], clamped to the video's duration. Does
+  /// nothing before initialization.
+  Future<void> seekTo(Duration position) {
+    if (!value.isInitialized) {
+      return Future<void>.value();
+    }
+    final Duration clamped = position < Duration.zero
+        ? Duration.zero
+        : (position > value.duration ? value.duration : position);
+    // Seeking away from the end means the clip is no longer finished; iOS
+    // reports no event for that.
+    if (value.isCompleted && clamped < value.duration) {
+      value = value.copyWith(isCompleted: false);
+    }
+    return _call((int id) => AssetEntityVideoPlatform.seekTo(id, clamped));
+  }
 
-  /// Moves playback to [position].
-  Future<void> seekTo(Duration position) => _withPlayer(
-        (int id) => AssetEntityVideoPlatform.seekTo(id, position),
-      );
-
-  /// Sets output volume; values outside 0.0–1.0 are clamped.
+  /// Sets output volume; values outside 0.0–1.0 are clamped. Before
+  /// initialization the value is kept and applied when the player exists.
   Future<void> setVolume(double volume) {
     if (_disposed) {
       return Future<void>.value();
     }
     final double clamped = volume.clamp(0.0, 1.0);
     value = value.copyWith(volume: clamped);
-    return _withPlayer(
-      (int id) => AssetEntityVideoPlatform.setVolume(id, clamped),
-    );
+    return _call((int id) => AssetEntityVideoPlatform.setVolume(id, clamped));
   }
 
-  /// Sets whether playback restarts on completion.
+  /// Sets whether playback restarts on completion. Before initialization the
+  /// value is kept and applied when the player exists.
   Future<void> setLooping(bool looping) {
     if (_disposed) {
       return Future<void>.value();
     }
     value = value.copyWith(isLooping: looping);
-    return _withPlayer(
-      (int id) => AssetEntityVideoPlatform.setLooping(id, looping),
-    );
+    return _call((int id) => AssetEntityVideoPlatform.setLooping(id, looping));
   }
 
-  Future<void> _withPlayer(Future<void> Function(int textureId) action) async {
-    await initialize();
+  /// Sends [action] to an existing player; a no-op before initialization.
+  Future<void> _call(Future<void> Function(int textureId) action) async {
     final int? id = _textureId;
     if (id == null || _disposed) {
       return;
@@ -266,19 +300,47 @@ class AssetEntityVideoController extends ValueNotifier<AssetEntityVideoValue> {
   }
 
   @override
-  void dispose() {
+  Future<void> dispose() async {
     if (_disposed) {
       return;
     }
     _disposed = true;
+    _wantsPlaying = false;
     _markReady();
-    _events?.cancel();
+    _lifecycle?.detach();
+    await _events?.cancel();
     final int? id = _textureId;
+    super.dispose();
     if (id != null) {
       // The native side may already have dropped the player on an engine
       // detach, and that rejection must not escape into the disposing zone.
-      unawaited(AssetEntityVideoPlatform.dispose(id).catchError((Object _) {}));
+      await AssetEntityVideoPlatform.dispose(id).catchError((Object _) {});
     }
-    super.dispose();
+  }
+}
+
+/// Pauses on the way to the background and resumes on return, like
+/// `video_player` does by default.
+class _LifecycleObserver with WidgetsBindingObserver {
+  _LifecycleObserver(this._controller);
+
+  final AssetEntityVideoController _controller;
+  bool _wasPlaying = false;
+
+  void attach() => WidgetsBinding.instance.addObserver(this);
+
+  void detach() => WidgetsBinding.instance.removeObserver(this);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _wasPlaying = _controller.value.isPlaying;
+      if (_wasPlaying) {
+        _controller.pause();
+      }
+    } else if (state == AppLifecycleState.resumed && _wasPlaying) {
+      _wasPlaying = false;
+      _controller.play();
+    }
   }
 }

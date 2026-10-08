@@ -19,7 +19,7 @@ class ExampleApp extends StatelessWidget {
   }
 }
 
-/// Lists the device's videos and opens each one with zero copies.
+/// Lists the device's videos and plays each one without copying it first.
 class GalleryPage extends StatefulWidget {
   const GalleryPage({super.key});
 
@@ -140,7 +140,7 @@ class _VideoThumbnail extends StatelessWidget {
   }
 }
 
-/// Plays one asset with [AssetEntityVideoController] — zero copies, either
+/// Plays one asset with [AssetEntityVideoController] — no copy first, either
 /// platform. The poster thumbnail cross-fades out on `firstFrameRendered`.
 class VideoPage extends StatefulWidget {
   const VideoPage({super.key, required this.asset});

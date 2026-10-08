@@ -19,9 +19,6 @@ enum AssetEntityVideoErrorCode {
   /// The asset lives only in iCloud and could not be downloaded.
   iCloudUnavailable,
 
-  /// A non-video asset was handed to the controller.
-  notAVideo,
-
   /// The platform player failed to decode or render.
   playbackFailed,
 }
@@ -66,7 +63,7 @@ class AssetEntityVideoValue {
     this.isBuffering = false,
     this.isCompleted = false,
     this.firstFrameRendered = false,
-    this.rotationDegrees = 0,
+    this.rotationCorrection = 0,
     this.volume = 1.0,
     this.downloadProgress,
     this.error,
@@ -98,9 +95,11 @@ class AssetEntityVideoValue {
   /// Whether playback reached the end without looping.
   final bool isCompleted;
 
-  /// Quarter turn the raw texture needs to be upright (0, 90, 180, 270).
-  /// [AssetEntityVideoView] applies it; [size] is already the upright size.
-  final int rotationDegrees;
+  /// Clockwise quarter turn the raw texture needs to be upright (0, 90, 180,
+  /// 270). [AssetEntityVideoView] applies it; [size] is already the upright
+  /// size. Only needed when drawing `AssetEntityVideoController.textureId`
+  /// yourself.
+  final int rotationCorrection;
 
   /// True once a frame has actually reached the platform surface — the signal
   /// to cross-fade away from the poster thumbnail.
@@ -135,7 +134,7 @@ class AssetEntityVideoValue {
     bool? isBuffering,
     bool? isCompleted,
     bool? firstFrameRendered,
-    int? rotationDegrees,
+    int? rotationCorrection,
     double? volume,
     double? downloadProgress,
     bool clearDownloadProgress = false,
@@ -151,7 +150,7 @@ class AssetEntityVideoValue {
       isBuffering: isBuffering ?? this.isBuffering,
       isCompleted: isCompleted ?? this.isCompleted,
       firstFrameRendered: firstFrameRendered ?? this.firstFrameRendered,
-      rotationDegrees: rotationDegrees ?? this.rotationDegrees,
+      rotationCorrection: rotationCorrection ?? this.rotationCorrection,
       volume: volume ?? this.volume,
       downloadProgress: clearDownloadProgress
           ? null
@@ -173,7 +172,7 @@ class AssetEntityVideoValue {
           isBuffering == other.isBuffering &&
           isCompleted == other.isCompleted &&
           firstFrameRendered == other.firstFrameRendered &&
-          rotationDegrees == other.rotationDegrees &&
+          rotationCorrection == other.rotationCorrection &&
           volume == other.volume &&
           downloadProgress == other.downloadProgress &&
           error == other.error);
@@ -189,7 +188,7 @@ class AssetEntityVideoValue {
         isBuffering,
         isCompleted,
         firstFrameRendered,
-        rotationDegrees,
+        rotationCorrection,
         volume,
         downloadProgress,
         error,
@@ -201,6 +200,6 @@ class AssetEntityVideoValue {
       'isInitialized: $isInitialized, isPlaying: $isPlaying, '
       'isLooping: $isLooping, isBuffering: $isBuffering, '
       'isCompleted: $isCompleted, firstFrameRendered: $firstFrameRendered, '
-      'rotationDegrees: $rotationDegrees, '
+      'rotationCorrection: $rotationCorrection, '
       'volume: $volume, downloadProgress: $downloadProgress, error: $error)';
 }

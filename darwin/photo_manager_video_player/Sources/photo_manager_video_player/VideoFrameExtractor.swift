@@ -26,6 +26,11 @@ enum VideoFrameExtractor {
 
         guard let asset = PHAsset.fetchAssets(
             withLocalIdentifiers: [localIdentifier], options: nil).firstObject else {
+            if libraryAccessDenied() {
+                return reply(FlutterError(
+                    code: "permissionDenied",
+                    message: "Photo library access is not granted.", details: nil))
+            }
             return reply(FlutterError(
                 code: "assetNotFound",
                 message: "Asset \(localIdentifier) is not available.", details: nil))

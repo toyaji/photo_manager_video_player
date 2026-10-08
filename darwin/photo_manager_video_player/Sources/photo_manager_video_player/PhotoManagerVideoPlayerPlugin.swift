@@ -8,6 +8,9 @@ public class PhotoManagerVideoPlayerPlugin: NSObject, FlutterPlugin {
     private let messenger: FlutterBinaryMessenger
     private var players: [Int64: GalleryVideoPlayer] = [:]
 
+    /// Players the engine still owns; read by the engine-teardown test.
+    var playerCount: Int { players.count }
+
     init(registry: FlutterTextureRegistry, messenger: FlutterBinaryMessenger) {
         self.registry = registry
         self.messenger = messenger
@@ -21,6 +24,8 @@ public class PhotoManagerVideoPlayerPlugin: NSObject, FlutterPlugin {
         let channel = FlutterMethodChannel(
             name: channelName, binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(instance, channel: channel)
+        // Only published instances receive detachFromEngine(for:).
+        registrar.publish(instance)
     }
 
     /// Releases every outstanding player when the engine tears down, so no
@@ -65,6 +70,7 @@ public class PhotoManagerVideoPlayerPlugin: NSObject, FlutterPlugin {
                 return result(FlutterError(
                     code: "playbackFailed", message: "Missing 'assetId'.", details: nil))
             }
+            AudioSession.upgradeForPlaybackOnce()
             let player = GalleryVideoPlayer(
                 registry: registry,
                 messenger: messenger,
@@ -80,7 +86,7 @@ public class PhotoManagerVideoPlayerPlugin: NSObject, FlutterPlugin {
         guard let textureId = (args["textureId"] as? NSNumber)?.int64Value,
               let player = players[textureId] else {
             return result(FlutterError(
-                code: "assetNotFound", message: "No player for the given texture.", details: nil))
+                code: "playbackFailed", message: "No player for the given texture.", details: nil))
         }
 
         switch call.method {
