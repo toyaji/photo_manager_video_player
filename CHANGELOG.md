@@ -12,5 +12,8 @@
   texture through `TextureRegistry.SurfaceProducer`.
 - iOS: `PHImageManager.requestPlayerItem` → `AVPlayer`, drawn into a Flutter
   texture through `AVPlayerItemVideoOutput`.
-- Pauses in the background and resumes on return; iOS raises an ambient audio
+- Pauses in the background and resumes on return; a `play()` that would start
+  in the background starts on return instead. `dispose()` completes once the
+  platform player is released, even while it is being created. iOS raises an ambient audio
   session to `.playback` on the first player.
+- Flutter 3.29 or later; Swift Package Manager builds need Flutter 3.44.
