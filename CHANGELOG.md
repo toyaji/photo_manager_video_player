@@ -1,5 +1,9 @@
 ## Unreleased
 
+- `AssetEntityVideoController(viewType: AssetEntityVideoViewType.platformView)`:
+  on Android, shows the video in a `SurfaceView` platform view so HDR video
+  keeps its own display layer. The default stays `textureView`; other
+  platforms always use the texture.
 - `AssetEntityVideoFrames.extract`: JPEG stills at a list of times, read in
   place — `AVAssetImageGenerator` on iOS, `MediaMetadataRetriever` on Android.
 
