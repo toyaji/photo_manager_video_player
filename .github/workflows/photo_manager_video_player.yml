@@ -90,6 +90,8 @@ jobs:
         working-directory: ${{ env.PACKAGE_DIR }}/example
         run: flutter build apk --config-only
       - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        # Shorter than the job, so a stalled run still uploads its artifacts.
+        timeout-minutes: 20
         with:
           api-level: ${{ matrix.api-level }}
           target: google_apis
@@ -98,7 +100,15 @@ jobs:
           working-directory: ${{ env.PACKAGE_DIR }}/example
           script: |
             cd android && ./gradlew :app:connectedDebugAndroidTest --console=plain
-            ./tool/integration_test_android.sh
+            ARTIFACTS_DIR="$RUNNER_TEMP/device-tests" ./tool/integration_test_android.sh
+      - name: Upload test output, logcat and failed frames
+        # Also after the emulator step's timeout, which may not count as failure().
+        if: ${{ !success() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: android-device-tests-api-${{ matrix.api-level }}
+          path: ${{ runner.temp }}/device-tests
+          if-no-files-found: ignore
 
   ios-cocoapods:
     name: iOS build (CocoaPods) + XCTest
