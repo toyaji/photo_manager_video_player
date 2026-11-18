@@ -29,9 +29,13 @@ AssetEntityVideoValue applyPlayerEvent(
       if (durationMs == null) {
         return current;
       }
+      final num? positionMs = event['positionMs'] as num?;
       return current.copyWith(
         isInitialized: true,
         duration: Duration(milliseconds: durationMs.toInt()),
+        position: positionMs == null
+            ? null
+            : Duration(milliseconds: positionMs.toInt()),
         clearDownloadProgress: true,
       );
     case 'videoSize':
@@ -104,7 +108,9 @@ class AssetEntityVideoController extends ValueNotifier<AssetEntityVideoValue> {
     this.asset, {
     this.allowNetworkAccess = true,
     this.viewType = AssetEntityVideoViewType.textureView,
-  }) : super(
+    this.startPosition = Duration.zero,
+  })  : assert(!startPosition.isNegative, 'startPosition must not be negative.'),
+        super(
           AssetEntityVideoValue(
             size: asset.orientatedSize,
             duration: asset.videoDuration,
@@ -128,6 +134,14 @@ class AssetEntityVideoController extends ValueNotifier<AssetEntityVideoValue> {
   /// How [AssetEntityVideoView] shows the video. Fixed for the controller's
   /// life, since the platform player is built for one or the other.
   final AssetEntityVideoViewType viewType;
+
+  /// Where the player is prepared, so the first rendered frame is the frame
+  /// at or after this position rather than frame 0. It lands in
+  /// [AssetEntityVideoValue.position] once [initialize] returns; replays and
+  /// loops restart from 0. Android only for now; elsewhere playback starts
+  /// at 0. See [AssetEntityVideoFrames.mediaStoreThumbnailPosition] for the
+  /// position of the MediaStore thumbnail's frame.
+  final Duration startPosition;
 
   /// Whether the video is shown through a platform view; [viewType] falls
   /// back to a texture on platforms without one.
@@ -178,6 +192,11 @@ class AssetEntityVideoController extends ValueNotifier<AssetEntityVideoValue> {
         looping: looping,
         volume: volume,
         platformView: usesPlatformView,
+        // A start at or past the end could never become ready, so it starts at 0.
+        startPosition: value.duration > Duration.zero &&
+                startPosition >= value.duration
+            ? Duration.zero
+            : startPosition,
       );
       final int id = await creating;
       if (_disposed) {

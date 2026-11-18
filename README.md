@@ -110,6 +110,42 @@ neighbouring page without awaiting it; check `value.hasError` after awaiting.
 The one exception is a programming error: passing a non-video `AssetEntity`
 to the constructor throws an `ArgumentError`.
 
+### Starting at a position
+
+`AssetEntityVideoController(startPosition: ...)` prepares the player at that
+position, so the first rendered frame is the one at or after it rather than
+frame 0, and `value.position` holds the start once `initialize()` returns.
+Replays after completion and loops restart from 0. Android only for now;
+elsewhere playback starts at 0.
+
+#### Handing a MediaStore thumbnail over to playback
+
+A grid that swaps a thumbnail for the playing video jumps unless playback
+starts on the frame the thumbnail shows. On Android 8.1 and later,
+`AssetEntityVideoFrames.mediaStoreThumbnailPosition(assetId:)` returns the
+position of the frame the **MediaStore system thumbnail**
+(`ContentResolver.loadThumbnail`) shows; pass it as `startPosition`.
+
+- **Which thumbnail.** Only the MediaStore one. Thumbnails rendered another
+  way — for example `photo_manager`'s `thumbnailDataWithSize`, which decodes
+  frame 0 by default — already match a start at 0.
+- **How.** MediaStore exposes no thumbnail time. The plugin computes the sync
+  frame `ThumbnailUtils` picks (nearest half the duration) and confirms it
+  against the thumbnail with one small decode; the representative, first and
+  neighbouring sync frames are tried only when it does not match.
+- **Cover art.** `ThumbnailUtils` shows a video's embedded picture instead of
+  a frame when it has one; cameras embed their first frame, so the first frame
+  is tried first for such videos.
+- **null.** When none of those is the thumbnail's frame (for example cover art
+  that is no frame of the video), when anything cannot be read, below
+  Android 8.1, and on other platforms. Decide what to
+  show in that case, such as not starting playback from the thumbnail.
+- **Cost.** A lookup decodes one frame in most cases — a fraction of a second
+  for 4K H.264, about a second for 4K HEVC on a recent phone — and lookups run
+  one at a time per Flutter engine on a background thread; concurrent requests
+  for one asset share a lookup. Results are remembered per asset version
+  for the life of the process; only an unreadable thumbnail is looked up again.
+
 ### `AssetEntityVideoValue`
 
 | Field | Meaning |

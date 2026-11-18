@@ -2,6 +2,7 @@
 // Use of this source code is governed by an Apache license that can be found
 // in the LICENSE file.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photo_manager_video_player/photo_manager_video_player.dart';
@@ -116,5 +117,38 @@ void main() {
         ),
       ),
     );
+  });
+
+  group('mediaStoreThumbnailPosition', () {
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    test('Android turns the milliseconds into a Duration', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      mockReply((MethodCall call) async => 18016);
+      final Duration? position =
+          await AssetEntityVideoFrames.mediaStoreThumbnailPosition(assetId: '42');
+      expect(position, const Duration(milliseconds: 18016));
+      expect(calls.single.method, 'mediaStoreThumbnailPosition');
+      expect(calls.single.arguments, <String, Object?>{'assetId': '42'});
+    });
+
+    test('Android passes a miss through as null', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      mockReply((MethodCall call) async => null);
+      expect(
+        await AssetEntityVideoFrames.mediaStoreThumbnailPosition(assetId: '42'),
+        isNull,
+      );
+    });
+
+    test('other platforms answer null without calling the platform', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      mockReply((MethodCall call) async => 1);
+      expect(
+        await AssetEntityVideoFrames.mediaStoreThumbnailPosition(assetId: '42'),
+        isNull,
+      );
+      expect(calls, isEmpty);
+    });
   });
 }

@@ -23,6 +23,7 @@ class AssetEntityVideoPlatform {
     required bool looping,
     required double volume,
     required bool platformView,
+    Duration startPosition = Duration.zero,
   }) async {
     if (!_restartCleanupDone) {
       _restartCleanupDone = true;
@@ -37,6 +38,8 @@ class AssetEntityVideoPlatform {
       'looping': looping,
       'volume': volume,
       if (platformView) 'viewType': 'platformView',
+      if (startPosition > Duration.zero)
+        'startPositionMs': startPosition.inMilliseconds,
     });
     if (id == null) {
       throw PlatformException(
@@ -87,6 +90,13 @@ class AssetEntityVideoPlatform {
       return frame is Uint8List ? frame : null;
     });
   }
+
+  /// Milliseconds of the MediaStore thumbnail's frame, or null.
+  static Future<int?> mediaStoreThumbnailPositionMs(String assetId) =>
+      _channel.invokeMethod<int>(
+        'mediaStoreThumbnailPosition',
+        <String, dynamic>{'assetId': assetId},
+      );
 
   static Future<void> _invoke(
     String method,

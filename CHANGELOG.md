@@ -1,5 +1,11 @@
 ## Unreleased
 
+- `AssetEntityVideoController(startPosition:)`: Android prepares the player at
+  that position, so the first rendered frame is the one there instead of frame
+  0. The `initialized` event now also reports the start position.
+- `AssetEntityVideoFrames.mediaStoreThumbnailPosition`: Android 8.1+ returns
+  the position of the frame the MediaStore system thumbnail shows, or null, so
+  a grid can hand that thumbnail over to playback without a jump.
 - `AssetEntityVideoController(viewType: AssetEntityVideoViewType.platformView)`:
   shows the video in a platform view — a `SurfaceView` on Android, an
   `AVPlayerLayer` on iOS — so HDR video keeps the system's HDR handling. The

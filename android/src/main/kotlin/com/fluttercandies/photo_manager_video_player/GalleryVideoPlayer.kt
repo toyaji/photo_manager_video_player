@@ -36,6 +36,8 @@ class GalleryVideoPlayer(
     private val assetId: String,
     initialLooping: Boolean,
     initialVolume: Double,
+    /** Where the player is prepared; an exact seek, so the first frame is the one at or after it. */
+    private val startPositionMs: Long = 0L,
 ) {
     private val events =
         EventChannel(messenger, "${PhotoManagerVideoPlayerPlugin.CHANNEL_NAME}/events/$playerId")
@@ -142,7 +144,7 @@ class GalleryVideoPlayer(
             return
         }
         val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
-        exoPlayer.setMediaItem(MediaItem.fromUri(uri))
+        exoPlayer.setMediaItem(MediaItem.fromUri(uri), startPositionMs)
         exoPlayer.prepare()
     }
 
@@ -209,7 +211,7 @@ class GalleryVideoPlayer(
         val duration = exoPlayer.duration
         if (duration == C.TIME_UNSET) return
         initializedEventSent = true
-        emit("initialized", mapOf("durationMs" to duration))
+        emit("initialized", mapOf("durationMs" to duration, "positionMs" to exoPlayer.currentPosition))
     }
 
     private val positionRunnable = object : Runnable {

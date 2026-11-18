@@ -21,6 +21,26 @@ void main() {
     );
   });
 
+  test('initialized carries the start position the player was prepared at', () {
+    final AssetEntityVideoValue result = applyPlayerEvent(
+      _base,
+      const <Object?, Object?>{
+        'event': 'initialized',
+        'durationMs': 35096,
+        'positionMs': 18016,
+      },
+    );
+    expect(result.position, const Duration(milliseconds: 18016));
+  });
+
+  test('initialized without a position keeps the current one', () {
+    final AssetEntityVideoValue result = applyPlayerEvent(
+      _base,
+      const <Object?, Object?>{'event': 'initialized', 'durationMs': 12345},
+    );
+    expect(result.position, Duration.zero);
+  });
+
   test('initialized replaces the seeded duration with the exact one', () {
     final AssetEntityVideoValue result = applyPlayerEvent(
       _base,

@@ -2,7 +2,9 @@
 // Use of this source code is governed by an Apache license that can be found
 // in the LICENSE file.
 
-import 'package:flutter/services.dart' show Uint8List;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/services.dart' show PlatformException, Uint8List;
 
 import 'platform_bridge.dart';
 
@@ -41,5 +43,32 @@ abstract final class AssetEntityVideoFrames {
       quality: quality.clamp(0, 100),
       allowNetworkAccess: allowNetworkAccess,
     );
+  }
+
+  /// Position of the frame the Android MediaStore system thumbnail
+  /// (`ContentResolver.loadThumbnail`) shows, for
+  /// [AssetEntityVideoController.startPosition], so that thumbnail can hand
+  /// over to playback without a jump.
+  ///
+  /// MediaStore exposes no thumbnail time, so the plugin computes the sync
+  /// frame `ThumbnailUtils` picks (nearest half the duration), confirms it
+  /// against the thumbnail with one small decode, and tries the
+  /// representative, first and neighbouring sync frames only when it does not
+  /// match; a video with embedded cover art, which the thumbnail then shows,
+  /// is tried against its first frame first. Returns null when none of them is
+  /// the thumbnail's frame, when anything cannot be read, below Android 8.1,
+  /// and on other platforms. Results are kept per asset version
+  /// for the life of the process; lookups run one at a time, and concurrent
+  /// requests for one asset share a single lookup. Throws a
+  /// [PlatformException] when the plugin is detached from its engine.
+  static Future<Duration?> mediaStoreThumbnailPosition({
+    required String assetId,
+  }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return null;
+    }
+    final int? ms =
+        await AssetEntityVideoPlatform.mediaStoreThumbnailPositionMs(assetId);
+    return ms == null ? null : Duration(milliseconds: ms);
   }
 }

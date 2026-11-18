@@ -66,6 +66,51 @@ List<MethodCall> _mockPlatform(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('create sends the start position only when it is past 0', () async {
+    final List<MethodCall> calls = _mockPlatform(7);
+    final AssetEntityVideoController plain =
+        AssetEntityVideoController(_video('plain'));
+    await plain.initialize();
+    final AssetEntityVideoController later = AssetEntityVideoController(
+      _video('later'),
+      startPosition: const Duration(milliseconds: 4024),
+    );
+    await later.initialize();
+    final List<Map<Object?, Object?>> creates = <Map<Object?, Object?>>[
+      for (final MethodCall c in calls)
+        if (c.method == 'create') c.arguments as Map<Object?, Object?>,
+    ];
+    expect(creates.first.containsKey('startPositionMs'), isFalse);
+    expect(creates.last['startPositionMs'], 4024);
+    await plain.dispose();
+    await later.dispose();
+  });
+
+  test('a start at or past the end starts at 0', () async {
+    final List<MethodCall> calls = _mockPlatform(7);
+    final AssetEntityVideoController late = AssetEntityVideoController(
+      _video('late'),
+      startPosition: const Duration(seconds: 12),
+    );
+    await late.initialize();
+    final MethodCall create = calls.firstWhere((MethodCall c) => c.method == 'create');
+    expect(
+      (create.arguments as Map<Object?, Object?>).containsKey('startPositionMs'),
+      isFalse,
+    );
+    await late.dispose();
+  });
+
+  test('a negative start position is a programming error', () {
+    expect(
+      () => AssetEntityVideoController(
+        _video('neg'),
+        startPosition: const Duration(milliseconds: -1),
+      ),
+      throwsAssertionError,
+    );
+  });
+
   test('seeds size and duration from the asset', () {
     final AssetEntityVideoController controller =
         AssetEntityVideoController(_video('1'));
