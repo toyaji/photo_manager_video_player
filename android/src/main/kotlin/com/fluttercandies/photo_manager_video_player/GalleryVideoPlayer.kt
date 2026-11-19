@@ -39,6 +39,8 @@ class GalleryVideoPlayer(
     /** Where the player is prepared; an exact seek, so the first frame is the one at or after it. */
     private val startPositionMs: Long = 0L,
 ) {
+    private val resolver = context.contentResolver
+
     private val events =
         EventChannel(messenger, "${PhotoManagerVideoPlayerPlugin.CHANNEL_NAME}/events/$playerId")
     private var sink: EventChannel.EventSink? = null
@@ -144,8 +146,20 @@ class GalleryVideoPlayer(
             return
         }
         val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
-        exoPlayer.setMediaItem(MediaItem.fromUri(uri), startPositionMs)
+        exoPlayer.setMediaItem(MediaItem.fromUri(uri), startWithin(uri))
         exoPlayer.prepare()
+    }
+
+    /** A start at or past the end could never become ready, so it starts at 0; MediaStore knows the ms length. */
+    private fun startWithin(uri: android.net.Uri): Long {
+        if (startPositionMs <= 0L) return 0L
+        val durationMs = try {
+            resolver.query(uri, arrayOf(MediaStore.Video.Media.DURATION), null, null, null)
+                ?.use { c -> if (c.moveToFirst()) c.getLong(0) else 0L } ?: 0L
+        } catch (e: Exception) {
+            0L
+        }
+        return if (durationMs > 0L && startPositionMs >= durationMs) 0L else startPositionMs
     }
 
     /** Draws into a platform view's surface; called each time it is (re)created. */

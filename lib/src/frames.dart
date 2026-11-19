@@ -4,7 +4,7 @@
 
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/services.dart' show PlatformException, Uint8List;
+import 'package:flutter/services.dart' show Uint8List;
 
 import 'platform_bridge.dart';
 
@@ -57,10 +57,9 @@ abstract final class AssetEntityVideoFrames {
   /// match; a video with embedded cover art, which the thumbnail then shows,
   /// is tried against its first frame first. Returns null when none of them is
   /// the thumbnail's frame, when anything cannot be read, below Android 8.1,
-  /// and on other platforms. Results are kept per asset version
-  /// for the life of the process; lookups run one at a time, and concurrent
-  /// requests for one asset share a single lookup. Throws a
-  /// [PlatformException] when the plugin is detached from its engine.
+  /// and on other platforms. Results, null included, are kept per asset
+  /// version for the life of the process, so a later request for the same
+  /// video is answered without a decode; lookups run one at a time.
   static Future<Duration?> mediaStoreThumbnailPosition({
     required String assetId,
   }) async {

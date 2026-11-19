@@ -192,11 +192,7 @@ class AssetEntityVideoController extends ValueNotifier<AssetEntityVideoValue> {
         looping: looping,
         volume: volume,
         platformView: usesPlatformView,
-        // A start at or past the end could never become ready, so it starts at 0.
-        startPosition: value.duration > Duration.zero &&
-                startPosition >= value.duration
-            ? Duration.zero
-            : startPosition,
+        startPosition: startPosition,
       );
       final int id = await creating;
       if (_disposed) {

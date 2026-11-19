@@ -86,21 +86,6 @@ void main() {
     await later.dispose();
   });
 
-  test('a start at or past the end starts at 0', () async {
-    final List<MethodCall> calls = _mockPlatform(7);
-    final AssetEntityVideoController late = AssetEntityVideoController(
-      _video('late'),
-      startPosition: const Duration(seconds: 12),
-    );
-    await late.initialize();
-    final MethodCall create = calls.firstWhere((MethodCall c) => c.method == 'create');
-    expect(
-      (create.arguments as Map<Object?, Object?>).containsKey('startPositionMs'),
-      isFalse,
-    );
-    await late.dispose();
-  });
-
   test('a negative start position is a programming error', () {
     expect(
       () => AssetEntityVideoController(

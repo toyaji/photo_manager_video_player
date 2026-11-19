@@ -1,19 +1,13 @@
 package com.fluttercandies.photo_manager_video_player
 
+import android.content.ContentUris
 import android.content.Context
+import android.provider.MediaStore
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
-import android.content.ContentUris
-import android.os.Handler
-import android.os.Looper
-import android.os.Process
-import android.provider.MediaStore
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.Executors
 
 class PhotoManagerVideoPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
@@ -28,11 +22,8 @@ class PhotoManagerVideoPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHan
     private var nextPlatformViewPlayerId = -1L
     private var frameExtractor: VideoFrameExtractor? = null
 
-    /** Runs thumbnail-frame lookups one at a time, so many requests never decode at once. */
-    private var thumbnailFrameExecutor: ExecutorService? = null
-
-    /** Replies waiting for a lookup, per asset id; touched on the main thread only, so one decode serves them all. */
-    private val pendingLookups = mutableMapOf<Long, MutableList<MethodChannel.Result>>()
+    /** Read by the thumbnail-frame lookups on their thread; a detached engine gets null without a decode. */
+    @Volatile private var attached = false
 
     /** Players the engine still owns; read by the engine-teardown test. */
     val playerCount: Int get() = players.size
@@ -46,12 +37,7 @@ class PhotoManagerVideoPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHan
             PlatformVideoViewFactory { players[it] },
         )
         frameExtractor = VideoFrameExtractor(context)
-        thumbnailFrameExecutor = Executors.newSingleThreadExecutor { task ->
-            Thread({
-                Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-                task.run()
-            }, "photo_manager_video_player-thumbnail-frame")
-        }
+        attached = true
         channel = MethodChannel(messenger, CHANNEL_NAME)
         channel.setMethodCallHandler(this)
     }
@@ -60,11 +46,7 @@ class PhotoManagerVideoPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHan
         releaseAll()
         frameExtractor?.dispose()
         frameExtractor = null
-        thumbnailFrameExecutor?.shutdownNow()
-        thumbnailFrameExecutor = null
-        // Dropped lookups still owe their callers one reply.
-        pendingLookups.values.flatten().forEach { it.success(null) }
-        pendingLookups.clear()
+        attached = false
         channel.setMethodCallHandler(null)
     }
 
@@ -99,21 +81,15 @@ class PhotoManagerVideoPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHan
 
         if (call.method == "mediaStoreThumbnailPosition") {
             val id = call.argument<String>("assetId")?.toLongOrNull() ?: return result.success(null)
-            val executor = thumbnailFrameExecutor
-                ?: return result.error("playbackFailed", "Plugin is detached.", null)
-            pendingLookups[id]?.let { it.add(result); return }
-            pendingLookups[id] = mutableListOf(result)
             val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
-            val main = Handler(Looper.getMainLooper())
-            try {
-                executor.execute {
-                    val us = ThumbnailFrame.locateUs(context, uri)
-                    // Rounded down: an exact seek to it still lands on that sync frame.
-                    main.post { pendingLookups.remove(id)?.forEach { it.success(us?.div(1000)) } }
-                }
-            } catch (e: RejectedExecutionException) {
-                pendingLookups.remove(id)?.forEach { it.error("playbackFailed", "Plugin is detached.", null) }
-            }
+            ThumbnailLookups.shared.request(
+                key = uri.toString(),
+                isAttached = { attached },
+                version = { ThumbnailFrame.version(context, uri) },
+                locate = { ThumbnailFrame.locate(context, uri) },
+                // Rounded down: an exact seek to it still lands on that sync frame.
+                reply = { us -> result.success(us?.div(1000)) },
+            )
             return
         }
 
