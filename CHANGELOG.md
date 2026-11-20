@@ -1,18 +1,3 @@
-## Unreleased
-
-- `AssetEntityVideoController(startPosition:)`: Android prepares the player at
-  that position, so the first rendered frame is the one there instead of frame
-  0. The `initialized` event now also reports the start position.
-- `AssetEntityVideoFrames.mediaStoreThumbnailPosition`: Android 8.1+ returns
-  the position of the frame the MediaStore system thumbnail shows, or null, so
-  a grid can hand that thumbnail over to playback without a jump.
-- `AssetEntityVideoController(viewType: AssetEntityVideoViewType.platformView)`:
-  shows the video in a platform view — a `SurfaceView` on Android, an
-  `AVPlayerLayer` on iOS — so HDR video keeps the system's HDR handling. The
-  default stays `textureView`; other platforms always use the texture.
-- `AssetEntityVideoFrames.extract`: JPEG stills at a list of times, read in
-  place — `AVAssetImageGenerator` on iOS, `MediaMetadataRetriever` on Android.
-
 ## 0.1.0
 
 - `AssetEntityVideoController`, `AssetEntityVideoValue`, `AssetEntityVideoView`:
@@ -31,3 +16,11 @@
   platform player is released, even while it is being created. iOS raises an ambient audio
   session to `.playback` on the first player.
 - Flutter 3.29 or later; Swift Package Manager builds need Flutter 3.44.
+- `AssetEntityVideoController(startPosition:)`: Android prepares the player at
+  that position, so the first rendered frame is the one there instead of frame
+  0. The `initialized` event now also reports the start position.
+- `AssetEntityVideoFrames.mediaStoreThumbnailPosition`: Android 8.1+ returns
+  the position of the frame the MediaStore system thumbnail shows, or null, so
+  a grid can hand that thumbnail over to playback without a jump.
+- `AssetEntityVideoFrames.extract`: JPEG stills at a list of times, read in
+  place — `AVAssetImageGenerator` on iOS, `MediaMetadataRetriever` on Android.

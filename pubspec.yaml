@@ -1,7 +1,8 @@
 name: photo_manager_video_player
 description: Play photo_manager AssetEntity videos with zero copies of the original — MediaStore content URIs on Android, PhotoKit AVPlayerItems on Darwin.
 version: 0.1.0
-homepage: https://github.com/fluttercandies/flutter_photo_manager_plugins/tree/main/packages/photo_manager_video_player
+repository: https://github.com/toyaji/photo_manager_video_player
+issue_tracker: https://github.com/toyaji/photo_manager_video_player/issues
 topics:
   - photo-manager
   - video-player

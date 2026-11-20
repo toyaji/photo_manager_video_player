@@ -1,3 +1,9 @@
 build/
 android/.cxx/
 pubspec.lock
+.dart_tool/
+.build/
+.gradle/
+.idea/
+*.iml
+.DS_Store

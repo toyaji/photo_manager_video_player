@@ -8,20 +8,14 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "packages/photo_manager_video_player/**"
-      - ".github/workflows/photo_manager_video_player.yml"
   pull_request:
     branches:
       - main
-    paths:
-      - "packages/photo_manager_video_player/**"
-      - ".github/workflows/photo_manager_video_player.yml"
 
 permissions: {}
 
 env:
-  PACKAGE_DIR: packages/photo_manager_video_player
+  PACKAGE_DIR: .
 
 jobs:
   dart:
