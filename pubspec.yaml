@@ -6,6 +6,7 @@ issue_tracker: https://github.com/toyaji/photo_manager_video_player/issues
 topics:
   - photo-manager
   - video-player
+  - video
   - gallery
 
 environment:

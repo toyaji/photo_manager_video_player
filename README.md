@@ -1,10 +1,23 @@
 # photo_manager_video_player
 
-Play `photo_manager` gallery videos **without an app-managed copy or export**.
-Android hands ExoPlayer the MediaStore `content://` URI; iOS asks PhotoKit for
-an `AVPlayerItem`. The app never writes the video to its own storage before
-playing it. PhotoKit may still download or prepare the asset itself, for
-example when the original is only in iCloud.
+[![pub package](https://img.shields.io/pub/v/photo_manager_video_player.svg)](https://pub.dev/packages/photo_manager_video_player)
+[![pub points](https://img.shields.io/pub/points/photo_manager_video_player)](https://pub.dev/packages/photo_manager_video_player/score)
+[![CI](https://github.com/toyaji/photo_manager_video_player/actions/workflows/photo_manager_video_player.yml/badge.svg)](https://github.com/toyaji/photo_manager_video_player/actions/workflows/photo_manager_video_player.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/toyaji/photo_manager_video_player/blob/main/LICENSE)
+
+Play videos from the device photo library — an
+[`AssetEntity`](https://pub.dev/documentation/photo_manager/latest/photo_manager/AssetEntity-class.html)
+from [`photo_manager`](https://pub.dev/packages/photo_manager) — **without
+copying the original file first**.
+
+With [`video_player`](https://pub.dev/packages/video_player), a gallery video
+has to become a file before it can play: `entity.file` copies the whole
+original on Android and exports it on iOS. For a 4K clip that takes seconds and
+doubles the storage, all before the first frame. This package points the
+platform player straight at the library's own reference instead, so playback
+starts as soon as the decoder is ready.
+
+![Playback path: video_player copies the original first; this package plays it in place](https://raw.githubusercontent.com/toyaji/photo_manager_video_player/main/doc/images/playback-path.svg)
 
 ```dart
 final controller = AssetEntityVideoController(asset);
@@ -17,259 +30,251 @@ AspectRatio(
 );
 ```
 
+## Features
+
+- **No copy, no export.** Android plays the MediaStore `content://` URI with
+  ExoPlayer; iOS plays the `AVPlayerItem` PhotoKit hands back.
+- **Layout before loading.** Size and duration come from the `AssetEntity`, so
+  `AspectRatio` is right from the first build.
+- **Gallery-friendly errors.** `initialize()` never throws; failures land in
+  `value.error` with a typed code you can switch on.
+- **HDR video.** An optional platform view keeps the system's HDR handling.
+- **iCloud streaming** on iOS, with download progress.
+- **Seamless thumbnail hand-over** on Android: start playback on the exact
+  frame the system thumbnail shows.
+- **Frame extraction.** JPEG stills at chosen times, read in place.
+- **Lifecycle handled.** Pauses in the background, resumes on return, frees
+  everything on `dispose()` and on hot restart.
+
 | | Android | iOS |
 |---|---|---|
-| Resolve | `MediaStore.Video.Media` `content://` URI | `PHImageManager.requestPlayerItem` |
-| Play | ExoPlayer (media3) | `AVPlayer(playerItem:)` |
-| Draw | `TextureRegistry.SurfaceProducer` | `AVPlayerItemVideoOutput` → `FlutterTexture` |
-| App-side copy or export | none | none |
-| Extra framework | media3-exoplayer | `Photos`, `AVFoundation` |
-| Minimum OS | API 21 | iOS 13 |
+| Minimum version | API 21 | iOS 13 |
+| Player | ExoPlayer (media3) | `AVPlayer` |
+| Copy of the original | none | none |
 
-## How it differs from `video_player`
+macOS, web and desktop are not supported.
 
-![Playback path](doc/images/playback-path.svg)
+## Getting started
 
-`video_player` plays files and URLs. To play a gallery asset with it, an app
-first calls `entity.file`, which on Android copies the whole original into the
-app cache and on iOS runs an `AVAssetExportSession`. For a 4K clip that copy
-takes seconds and doubles the storage the video occupies, and it happens
-before the first frame can appear. In a swipeable gallery, the copy *is* the
-latency.
+### 1. Install
 
-This package skips the file. The platform player is pointed straight at the
-library's own reference to the asset, and frames are drawn into a Flutter
-texture the same way `video_player` draws them.
+```sh
+flutter pub add photo_manager photo_manager_video_player
+```
 
-| | `video_player` + `entity.file` | `photo_manager_video_player` |
-|---|---|---|
-| Input | file path or URL | `AssetEntity` |
-| Disk writes before first frame | full copy / export | none |
-| Time to first frame | copy time + decoder spin-up | decoder spin-up |
-| iCloud-only asset (iOS) | export fails or blocks | streams while downloading, with `downloadProgress` |
-| Layout before metadata | unknown until initialized | seeded from `AssetEntity` size and duration |
-| Errors | thrown from `initialize()` | typed `value.error`, never thrown |
-| Network URLs, captions, DRM, PiP | yes | not in scope |
+Flutter 3.29 or later is required. Building iOS with Swift Package Manager
+needs Flutter 3.44; on older Flutter keep the app on CocoaPods. See
+[Requirements](#requirements).
 
-Both can live in one app: keep `video_player` for remote streams and use this
-package for anything that comes from the photo library.
+### 2. Set up photo library access
 
-## How frames reach the screen
+This package reads the library through `photo_manager`, so the app needs the
+same platform setup `photo_manager` describes in its
+[README](https://pub.dev/packages/photo_manager#prepare-for-use):
 
-![Frame delivery](doc/images/frame-delivery.svg)
+- **Android** — `READ_MEDIA_VIDEO` (Android 13+) and `READ_EXTERNAL_STORAGE`
+  (Android 12 and below) in `AndroidManifest.xml`.
+- **iOS** — `NSPhotoLibraryUsageDescription` in `Info.plist`.
 
-**Android.** The asset id is a MediaStore `_ID`; it becomes
-`content://media/external/video/media/<id>` and is given to ExoPlayer as a
-`MediaItem`. ExoPlayer renders into the `Surface` of a
-`TextureRegistry.SurfaceProducer`, which is the Flutter texture. Playback
-state, video size, position, and first-frame events are forwarded on an
-`EventChannel` from ExoPlayer's listener.
+### 3. Ask for permission, then play
 
-**iOS.** The asset id is a `PHAsset.localIdentifier`. `requestPlayerItem` returns
-an `AVPlayerItem` that plays the library file in place (or streams it from
-iCloud when `allowNetworkAccess` is true). An `AVPlayerItemVideoOutput`
-configured for 32-bit BGRA is attached to the item; a `CADisplayLink` polls it
-once per display refresh and, when a new frame exists, marks the Flutter
-texture dirty. Flutter then calls `copyPixelBuffer`, which hands over the
-latest `CVPixelBuffer` without copying its bytes.
+The package never asks for permission itself. Request it before creating a
+controller:
 
-On both platforms the video surface belongs to the player until `dispose()`.
-When the texture path does not apply the orientation metadata itself, the
-quarter turn is reported as `rotationCorrection` and `AssetEntityVideoView`
-rotates the texture, so nothing is re-encoded. To draw the video yourself,
-use `controller.textureId` in a `Texture` widget with the same rotation.
+```dart
+final PermissionState ps = await PhotoManager.requestPermissionExtend();
+if (!ps.hasAccess) return;
 
-**HDR: platform view.** A texture is composited into the Flutter layer,
-which is 8-bit, so HLG/HDR10/Dolby Vision video loses the system's HDR
-handling: on Android it looks brighter and flatter than in the Gallery app,
-and on iOS it is tone-mapped to SDR. Pass
-`viewType: AssetEntityVideoViewType.platformView` to draw into a platform view
-instead (as `video_player`'s `VideoViewType.platformView`) — a `SurfaceView` on
-Android, an `AVPlayerLayer` on iOS. The video keeps the system's HDR handling,
-and on iOS an SDR screen still gets the system's tone mapping. The platform
-rotates those frames, so `rotationCorrection` is 0 and `textureId` is null. It
-composites like any platform view, and under a zero opacity it is not drawn at
-all, so cover it rather than hide it until `firstFrameRendered`.
+final List<AssetPathEntity> paths =
+    await PhotoManager.getAssetPathList(type: RequestType.video);
+final List<AssetEntity> videos =
+    await paths.first.getAssetListPaged(page: 0, size: 50);
 
-## Controller lifecycle
+final controller = AssetEntityVideoController(videos.first);
+```
 
-![Controller lifecycle](doc/images/controller-lifecycle.svg)
+A complete gallery with a player page is in the
+[example app](https://github.com/toyaji/photo_manager_video_player/tree/main/example).
 
-`AssetEntityVideoController` is a `ValueNotifier<AssetEntityVideoValue>`.
+## Usage
 
-1. **Created.** `value.size` and `value.duration` are seeded from the
-   `AssetEntity`, so `AspectRatio` lays out correctly before any native work
-   has started. Nothing is allocated yet.
-2. **`initialize()`.** Creates the platform player and a texture. Returns when
-   the player has reported its metadata; `size` and `duration` are now exact.
-   Calling it twice returns the same future. `play()` initializes on demand.
-   Before initialization `setVolume()` and `setLooping()` only store the
-   value, which is applied when the player is created; `pause()` cancels a
-   pending `play()`, and `seekTo()` does nothing.
-3. **`firstFrameRendered`.** The texture has real pixels. This is the moment
-   to fade out a poster thumbnail; before it the texture is transparent.
-4. **Playing.** `position` updates while playing; `isCompleted` is set when
-   playback reaches the end and cleared by the next `play()`. `seekTo()` is
-   clamped to `0`–`duration`.
-5. **`dispose()`.** Releases the player, the texture, and the event
-   subscription, and completes once the platform player is gone. When
-   `initialize()` is still in flight, the future waits for the player to be
-   created and then released.
+### Show a poster until the first frame
 
-Any failure lands in `value.error` with a typed `AssetEntityVideoErrorCode`
-and stops playback. `initialize()` never throws, so a gallery can warm up a
-neighbouring page without awaiting it; check `value.hasError` after awaiting.
-The one exception is a programming error: passing a non-video `AssetEntity`
-to the constructor throws an `ArgumentError`.
+The view is transparent until real pixels arrive. Keep a thumbnail on top —
+for example `Image.memory` of `asset.thumbnailData` — and fade it out on
+`firstFrameRendered`:
 
-### Starting at a position
+```dart
+ValueListenableBuilder<AssetEntityVideoValue>(
+  valueListenable: controller,
+  builder: (context, value, _) => Stack(
+    fit: StackFit.expand,
+    children: [
+      AssetEntityVideoView(controller),
+      AnimatedOpacity(
+        opacity: value.firstFrameRendered ? 0 : 1,
+        duration: const Duration(milliseconds: 150),
+        child: poster,
+      ),
+    ],
+  ),
+);
+```
 
-`AssetEntityVideoController(startPosition: ...)` prepares the player at that
-position, so the first rendered frame is the one at or after it rather than
-frame 0, and `value.position` holds the start once `initialize()` returns. A
-start at or past the end starts at 0.
-Replays after completion and loops restart from 0. Android only for now;
-elsewhere playback starts at 0.
+### Handle errors
 
-#### Handing a MediaStore thumbnail over to playback
+```dart
+await controller.initialize();
+final AssetEntityVideoError? error = controller.value.error;
+if (error != null) {
+  final String message = switch (error.code) {
+    AssetEntityVideoErrorCode.permissionDenied => 'Allow photo access.',
+    // Deleted, or outside a limited (selected photos) grant.
+    AssetEntityVideoErrorCode.assetNotFound => 'This video is unavailable.',
+    // iOS: only in iCloud and could not be downloaded.
+    AssetEntityVideoErrorCode.iCloudUnavailable => 'Could not load from iCloud.',
+    AssetEntityVideoErrorCode.playbackFailed => 'This video cannot be played.',
+  };
+}
+```
+
+Passing an `AssetEntity` that is not a video throws an `ArgumentError` — that
+is the only exception the controller throws.
+
+### HDR video
+
+A Flutter texture is 8-bit, so HLG, HDR10 and Dolby Vision video lose the
+system's HDR rendering. Draw into a platform view instead:
+
+```dart
+AssetEntityVideoController(
+  asset,
+  viewType: AssetEntityVideoViewType.platformView,
+);
+```
+
+It uses a `SurfaceView` on Android and an `AVPlayerLayer` on iOS. Platform
+views cost more to transform and clip, and under zero opacity they are not
+drawn at all — cover the view with a poster rather than hiding it.
+
+### Start from the system thumbnail (Android)
 
 A grid that swaps a thumbnail for the playing video jumps unless playback
-starts on the frame the thumbnail shows. On Android 8.1 and later,
-`AssetEntityVideoFrames.mediaStoreThumbnailPosition(assetId:)` returns the
-position of the frame the **MediaStore system thumbnail**
-(`ContentResolver.loadThumbnail`) shows; pass it as `startPosition`.
+starts on the frame the thumbnail shows. On Android 8.1+ the package can find
+that frame for the MediaStore system thumbnail:
 
-- **Which thumbnail.** Only the MediaStore one. Thumbnails rendered another
-  way — for example `photo_manager`'s `thumbnailDataWithSize`, which decodes
-  frame 0 by default — already match a start at 0.
-- **How.** MediaStore exposes no thumbnail time. The plugin computes the sync
-  frame `ThumbnailUtils` picks (nearest half the duration) and confirms it
-  against the thumbnail with one small decode; the representative, first and
-  neighbouring sync frames are tried only when it does not match.
-- **Cover art.** `ThumbnailUtils` shows a video's embedded picture instead of
-  a frame when it has one; cameras embed their first frame, so the first frame
-  is tried first for such videos.
-- **null.** When none of those is the thumbnail's frame (for example cover art
-  that is no frame of the video), when anything cannot be read, below
-  Android 8.1, and on other platforms. Decide what to
-  show in that case, such as not starting playback from the thumbnail.
-- **Cost.** On Android 10 and later a lookup decodes one frame in most cases — a fraction of a second
-  for 4K H.264, about a second for 4K HEVC on a recent phone — and lookups run
-  one at a time for the whole process on a background thread. Results, null
-  included, are remembered per asset version for the life of the process, so
-  a repeated request, even one made while the first is running, takes no
-  decode; a failure such as running out of memory also stays null until the
-  video changes or the process restarts. Requests cannot be cancelled, so ask
-  only for the videos about to play.
+```dart
+final Duration? start =
+    await AssetEntityVideoFrames.mediaStoreThumbnailPosition(assetId: asset.id);
 
-### `AssetEntityVideoValue`
+final controller = AssetEntityVideoController(
+  asset,
+  startPosition: start ?? Duration.zero,
+);
+```
 
-| Field | Meaning |
-|---|---|
-| `size`, `aspectRatio` | Upright frame geometry. Seeded from the asset, corrected from the player |
-| `rotationCorrection` | Clockwise quarter turn the raw texture needs; only for drawing `textureId` yourself |
-| `duration`, `position` | Same |
-| `isInitialized` | Player reported metadata |
-| `firstFrameRendered` | Texture holds a real frame |
-| `isPlaying`, `isBuffering`, `isCompleted`, `isLooping`, `volume` | Playback state |
-| `downloadProgress` | iOS only, 0–1 while an iCloud asset streams in; `null` otherwise |
-| `error` | `AssetEntityVideoError(code, message)` or `null` |
+It returns `null` when the frame cannot be identified, below Android 8.1, and
+on iOS. `startPosition` itself is Android only for now. How the lookup works
+and what it costs:
+[thumbnail hand-over](https://github.com/toyaji/photo_manager_video_player/blob/main/doc/thumbnail-handover.md).
 
-## Who owns what
-
-| Concern | Owner | Notes |
-|---|---|---|
-| How many players are alive | App | Devices allow only a handful of hardware decoders. Keep the visible one plus at most a neighbour or two; dispose the rest. |
-| Poster and cross-fade | App | Show a thumbnail until `firstFrameRendered`. |
-| Controls, scrubbing UI, mute policy | App | The controller exposes `play`, `pause`, `seekTo`, `setVolume`, `setLooping`; drawing controls is the app's job. |
-| Error UI | App | Switch on `value.error?.code`. |
-| Audio session and focus | Package, minimal | Android: an audible player takes audio focus, so other audio pauses; a muted player (volume 0) does not. iOS raises the default `.soloAmbient` session to `.playback` once, on the first player, so the silent switch does not mute video; any category the app set is kept. With that default, starting any player on iOS, muted or not, stops other apps' audio, as with `video_player`; an app whose muted previews must not do that sets `.ambient` or `.mixWithOthers` itself. Mixing with other audio, ducking and Now Playing are the app's. |
-| App lifecycle | Package | Playback pauses when the app goes to the background and resumes on return if it was playing. A `play()` called in the background, or still waiting for initialization when the app leaves, starts on return. Background playback is not offered. |
-| Audio interruptions (calls, other apps) | App | The system pauses playback and `isPlaying` turns false; resuming afterwards is the app's decision. |
-| Asset resolution | Package | MediaStore URI on Android, `PHAsset` lookup on iOS. |
-| Player and texture lifetime | Package | One player per controller; both freed in `dispose()` and on engine detach. |
-| Hot restart | Package | The engine survives a hot restart but the Dart side does not, so the first `create` after a restart asks the platform to drop every player from the previous isolate. |
-| Event delivery | Package | One `EventChannel` per player; malformed events are ignored rather than thrown. |
-
-## Frames without a copy
-
-`AssetEntityVideoFrames.extract` returns JPEG stills for a list of times — for
-thumbnail strips, or to hand a few frames to an image model — through the
-same zero-copy resolution as playback.
+### Extract frames
 
 ```dart
 final List<Uint8List?> frames = await AssetEntityVideoFrames.extract(
   assetId: asset.id,
   timesMs: <int>[0, 2000, 4000],
-  maxEdge: 480,   // longer edge, in pixels
-  quality: 70,    // JPEG quality, 0–100
+  maxEdge: 480, // longer edge, in pixels
+  quality: 70,  // JPEG quality, 0–100
 );
 ```
 
-| | Android | iOS |
-|---|---|---|
-| Resolve | `MediaStore.Video.Media` `content://` URI | `PHImageManager.requestAVAsset` |
-| Decode | `MediaMetadataRetriever.getScaledFrameAtTime` (`getFrameAtTime` + scale below API 27) | `AVAssetImageGenerator`, preferred track transform applied |
-| Bytes copied | **0** | **0** |
+One entry per time, in order; a frame that fails is `null`. Frames snap to the
+nearest sync frame, so they are fast but not frame-exact. Here
+`allowNetworkAccess` defaults to `false`: an iCloud-only video throws a
+`PlatformException` with code `iCloudUnavailable` instead of downloading.
 
-- The asset is opened once per call, whatever the number of times.
-- The result has one entry per time, in order; a frame that fails is `null`.
-- Frames snap to the nearest sync frame: fast, but not frame-exact.
-- `allowNetworkAccess` defaults to **false** here. An iCloud-only video then
-  throws a `PlatformException` with code `iCloudUnavailable` instead of
-  downloading. Android ignores the flag.
-- Only a failure to open the asset throws; its code is one of the names in
-  [Errors](#errors).
+### iCloud (iOS)
 
-## Errors
+With `allowNetworkAccess: true` (the default) an iCloud-only video streams
+while it downloads, and `value.downloadProgress` reports 0–1 until it is
+ready. Pass `false` to fail fast with `iCloudUnavailable` instead — useful in
+a grid where downloads should be opt-in.
 
-| Code | Meaning |
+## API at a glance
+
+| Type | Role |
 |---|---|
-| `assetNotFound` | The id no longer resolves to an asset, or the asset is outside a limited (selected-photos) grant |
-| `permissionDenied` | The app has no photo library access at all |
-| `iCloudUnavailable` | iOS: the asset is in iCloud and `allowNetworkAccess` is false, or the download failed |
-| `playbackFailed` | The platform player reported an error |
+| `AssetEntityVideoController` | A `ValueNotifier` that owns one platform player: `initialize`, `play`, `pause`, `seekTo`, `setVolume`, `setLooping`, `dispose`. |
+| `AssetEntityVideoValue` | Current state: `size`, `aspectRatio`, `duration`, `position`, `isInitialized`, `firstFrameRendered`, `isPlaying`, `isBuffering`, `isCompleted`, `isLooping`, `volume`, `downloadProgress`, `error`. |
+| `AssetEntityVideoView` | Draws the controller's video, rotated upright. |
+| `AssetEntityVideoViewType` | `textureView` (default) or `platformView`. |
+| `AssetEntityVideoFrames` | `extract` for JPEG stills, `mediaStoreThumbnailPosition` for the thumbnail hand-over. |
+| `AssetEntityVideoError`, `AssetEntityVideoErrorCode` | Typed failure in `value.error`. |
 
-## iCloud (iOS)
+Full reference on
+[pub.dev](https://pub.dev/documentation/photo_manager_video_player/latest/).
 
-With `allowNetworkAccess: true` (the default) PhotoKit streams an iCloud-only
-video while it downloads; `downloadProgress` reports 0–1 until
-`isInitialized`. Set it to false to fail fast with `iCloudUnavailable`
-instead, for example in a grid where downloads should be opt-in.
+## What your app owns
+
+The package manages the player, its texture and the app lifecycle. The app
+decides:
+
+- **How many players are alive.** Phones allow only a few hardware decoders.
+  Keep the visible video and at most a neighbour or two; dispose the rest.
+- **Posters, controls and error UI.**
+- **Audio policy beyond the default.** On iOS the first player raises the
+  default `.soloAmbient` session to `.playback`, so the silent switch does not
+  mute video and other apps' audio stops — as with `video_player`. Set
+  `.ambient` or `.mixWithOthers` yourself for muted previews that must not
+  interrupt music. On Android a muted player (volume 0) does not take audio
+  focus.
+
+Details: [lifecycle and ownership](https://github.com/toyaji/photo_manager_video_player/blob/main/doc/lifecycle.md).
 
 ## Requirements
 
-| | Minimum | Checked |
-|---|---|---|
-| Flutter | 3.29 | CI builds a new app with 3.29.3 (APK, iOS through CocoaPods) and with current stable; devices run 3.44 |
-| iOS through Swift Package Manager | Flutter 3.44 | CI builds a new app with 3.44.0 |
-| Android | API 21 (media3-exoplayer 1.4.1) | API 28 and 36 emulators, Galaxy S21 (Android 15) |
-| iOS | 13 | iOS 26.2 simulator, iPhone 14 (iOS 26) |
+| | Minimum |
+|---|---|
+| Flutter | 3.29 (CocoaPods) / 3.44 (Swift Package Manager) |
+| Android | API 21 |
+| iOS | 13 |
+| `photo_manager` | 3.x |
 
-- Call `PhotoManager.requestPermissionExtend()` before creating a controller;
-  the package does not request permission.
 - Flutter 3.29 is the floor because the Android texture relies on
-  `SurfaceProducer.Callback.onSurfaceCleanup`, added in 3.29
-  ([Flutter's migration guide](https://docs.flutter.dev/release/breaking-changes/android-surface-plugins)).
-- Swift Package Manager builds need Flutter 3.44: they depend on the
-  `FlutterFramework` package, which Flutter generates from 3.41, and
-  `photo_manager` 3.12.0 only builds against it from 3.44. On older Flutter,
-  keep the app on CocoaPods with `disable-swift-package-manager: true` under
-  `flutter:` in the app's `pubspec.yaml`.
+  `SurfaceProducer.Callback.onSurfaceCleanup`
+  ([migration guide](https://docs.flutter.dev/release/breaking-changes/android-surface-plugins)).
+- Swift Package Manager builds need the `FlutterFramework` package, which
+  `photo_manager` 3.12 builds against only from Flutter 3.44. On older Flutter
+  add `disable-swift-package-manager: true` under `flutter:` in the app's
+  `pubspec.yaml`.
+- CI builds a new app against both minimums and current stable on every push.
 
-### Working on this package
+## Not supported
 
-The package's own tests need a newer Flutter than apps do: `flutter_lints` 6
-needs Dart 3.8 (Flutter 3.32 or later). The example app's Android Gradle
-Plugin and Gradle versions apply to the example only.
-
-## Not in scope
-
-Network URL playback (that is `video_player`'s job), picture-in-picture, DRM,
-casting, and macOS. Playback speed, buffered ranges, captions, mixing with
-other audio and background playback are not in this version. A display
+Network URLs (use `video_player`), picture-in-picture, DRM, casting, captions,
+playback speed, buffered ranges, background playback and macOS. A display
 matrix that mirrors the picture is drawn without the mirroring.
+
+## Learn more
+
+- [How it works](https://github.com/toyaji/photo_manager_video_player/blob/main/doc/how-it-works.md) — playback path, frame delivery, HDR, comparison with `video_player`
+- [Lifecycle and ownership](https://github.com/toyaji/photo_manager_video_player/blob/main/doc/lifecycle.md) — controller states, audio, app lifecycle, hot restart
+- [Thumbnail hand-over](https://github.com/toyaji/photo_manager_video_player/blob/main/doc/thumbnail-handover.md) — `startPosition` and `mediaStoreThumbnailPosition`
+- [Changelog](https://github.com/toyaji/photo_manager_video_player/blob/main/CHANGELOG.md)
+
+## Contributing
+
+Bug reports and pull requests are welcome on
+[GitHub](https://github.com/toyaji/photo_manager_video_player/issues).
+The package's own tests need Flutter 3.32 or later (`flutter_lints` 6 needs
+Dart 3.8):
+
+```sh
+flutter test
+cd example && flutter test integration_test
+```
 
 ## License
 
-Apache-2.0.
+[Apache-2.0](https://github.com/toyaji/photo_manager_video_player/blob/main/LICENSE).
